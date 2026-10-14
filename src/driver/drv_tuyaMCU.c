@@ -375,6 +375,32 @@ void TuyaMCU_SetHeartbeatCounter(int v) {
 // 55AA     00      00      0000   xx   00
 
 #define MIN_TUYAMCU_PACKET_SIZE (2+1+1+2+1)
+// Painel de botoes: frame AA 55 00 08 00 10 00 KK CS (CS = soma dos 8 primeiros bytes)
+static void TuyaMCU_HandleButtonFrame(const byte *p) {
+	static byte lastKey = 0;
+	static unsigned int lastSec = 0;
+	byte sum = 0;
+	int i;
+
+	for (i = 0; i < 8; i++) sum += p[i];
+	if (sum != p[8]) return;
+
+	byte key = p[7];
+	unsigned int nowSec = (unsigned int)g_secondsElapsed;
+
+	// o CI repete o frame varias vezes por aperto: ignora repeticoes da mesma tecla
+	if (key == lastKey && (nowSec - lastSec) < 1) return;
+	lastKey = key;
+	lastSec = nowSec;
+
+	addLogAdv(LOG_INFO, LOG_FEATURE_TUYAMCU, "Button key %02X", key);
+	switch (key) {
+	case 0x01: CHANNEL_Toggle(1); break;
+	case 0x03: CHANNEL_Toggle(2); break;
+	case 0x04: CHANNEL_Toggle(3); break;
+	case 0x06: CHANNEL_Toggle(4); break;
+	}
+}
 int UART_TryToGetNextTuyaPacket(byte* out, int maxSize) {
 	int cs;
 	int len, i;
@@ -386,7 +412,18 @@ int UART_TryToGetNextTuyaPacket(byte* out, int maxSize) {
 	printfSkipDebug[0] = 0;
 
 	cs = UART_GetDataSize();
-
+		// frames AA 55 do painel de botoes (9 bytes)
+	while ((cs = UART_GetDataSize()) >= 9
+		&& UART_GetByte(0) == 0xAA && UART_GetByte(1) == 0x55) {
+		byte f[9];
+		for (i = 0; i < 9; i++) f[i] = UART_GetByte(i);
+		UART_ConsumeBytes(9);
+		TuyaMCU_HandleButtonFrame(f);
+	}
+	// frame AA 55 ainda incompleto: espera chegar o resto em vez de descartar
+	if (cs >= 2 && cs < 9 && UART_GetByte(0) == 0xAA && UART_GetByte(1) == 0x55) {
+		return 0;
+	}
 	if (cs < MIN_TUYAMCU_PACKET_SIZE) {
 		return 0;
 	}
