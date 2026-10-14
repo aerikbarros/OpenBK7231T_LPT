@@ -11,6 +11,7 @@ TuyaMCU version 0, aka low power protocol, documented here:
 https://developer.tuya.com/en/docs/iot/tuyacloudlowpoweruniversalserialaccessprotocol?id=K95afs9h4tjjh
 */
 
+
 #include "../new_common.h"
 #include "../new_pins.h"
 #include "../new_cfg.h"
